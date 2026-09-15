@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Private Camera Test</title>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+
+    h2 {
+      margin-bottom: 10px;
+    }
+
+    button {
+      padding: 14px 20px;
+      margin: 8px;
+      font-size: 17px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #createBtn {
+      background: #222;
+      color: white;
+    }
+
+    #copyBtn {
+      background: #ddd;
+      color: #111;
+    }
+
+    video {
+      width: 100%;
+      max-width: 500px;
+      background: black;
+      margin-top: 15px;
+      border-radius: 10px;
+    }
+
+    #linkBox {
+      display: none;
+      margin-top: 15px;
+    }
+
+    #shareLink {
+      width: 90%;
+      padding: 12px;
+      font-size: 14px;
+    }
+
+    #consentBox {
+      display: none;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+
+    #allowBtn {
+      background: #16803c;
+      color: white;
+    }
+
+    #cancelBtn {
+      background: #ddd;
+    }
+
+    #status {
+      font-weight: bold;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Private Camera Test</h2>
+
+<p id="status">Ready</p>
+
+<!-- SENDER SCREEN -->
+
+<div id="senderScreen">
+
+  <button id="createBtn" onclick="createLink()">
+    Create Camera Link
+  </button>
+
+  <div id="linkBox">
+
+    <p>Send this link to the other phone:</p>
+
+    <input id="shareLink" readonly>
+
+    <br>
+
+    <button id="copyBtn" onclick="copyLink()">
+      Copy Link
+    </button>
+
+  </div>
+
+  <h3>Remote Camera</h3>
+
+  <video
+    id="remoteVideo"
+    autoplay
+    playsinline>
+  </video>
+
+</div>
+
+
+<!-- RECEIVER CONSENT SCREEN -->
+
+<div id="consentBox">
+
+  <h3>Camera Permission</h3>
+
+  <p>
+    This camera test will share your camera
+    with the person who sent you this link.
+  </p>
+
+  <button id="allowBtn" onclick="allowCamera()">
+    Allow Camera
+  </button>
+
+  <button id="cancelBtn" onclick="cancelCamera()">
+    Cancel
+  </button>
+
+</div>
+
+
+<!-- RECEIVER LOCAL CAMERA -->
+
+<div id="receiverCamera" style="display:none;">
+
+  <h3>Your Camera</h3>
+
+  <video
+    id="localVideo"
+    autoplay
+    muted
+    playsinline>
+  </video>
+
+</div>
+
+
+<script>
+
+let peer;
+let localStream = null;
+let senderId = null;
+
+
+// Create PeerJS connection
+peer = new Peer();
+
+peer.on("open", function(id) {
+
+  senderId = id;
+
+  const params =
+    new URLSearchParams(window.location.search);
+
+  const host = params.get("host");
+
+  if (host) {
+
+    // This is the RECEIVER phone
+    showReceiverScreen(host);
+
+  } else {
+
+    // This is the SENDER phone
+    document.getElementById("status").innerText =
+      "Ready. Create a camera link.";
+
+  }
+
+});
+
+
+// SENDER receives incoming camera
+peer.on("call", function(call) {
+
+  document.getElementById("status").innerText =
+    "Camera connection received.";
+
+  call.answer();
+
+  call.on("stream", function(remoteStream) {
+
+    document.getElementById("remoteVideo").srcObject =
+      remoteStream;
+
+    document.getElementById("status").innerText =
+      "Live camera connected.";
+
+  });
+
+  call.on("close", function() {
+
+    document.getElementById("status").innerText =
+      "Camera connection closed.";
+
+  });
+
+  call.on("error", function(error) {
+
+    console.error(error);
+
+    document.getElementById("status").innerText =
+      "Connection error.";
+
+  });
+
+});
+
+
+// Create shareable link
+function createLink() {
+
+  if (!senderId) {
+
+    alert("Please wait a moment and try again.");
+
+    return;
+  }
+
+  const link =
+    window.location.origin +
+    window.location.pathname +
+    "?host=" +
+    encodeURIComponent(senderId);
+
+  document.getElementById("shareLink").value =
+    link;
+
+  document.getElementById("linkBox").style.display =
+    "block";
+
+  document.getElementById("createBtn").style.display =
+    "none";
+
+  document.getElementById("status").innerText =
+    "Link created. Waiting for camera permission.";
+
+}
+
+
+// Copy link
+async function copyLink() {
+
+  const link =
+    document.getElementById("shareLink").value;
+
+  try {
+
+    await navigator.clipboard.writeText(link);
+
+    document.getElementById("copyBtn").innerText =
+      "Copied!";
+
+  } catch (error) {
+
+    document.getElementById("shareLink").select();
+
+    document.execCommand("copy");
+
+    document.getElementById("copyBtn").innerText =
+      "Copied!";
+
+  }
+
+}
+
+
+// Show receiver consent screen
+function showReceiverScreen(host) {
+
+  document.getElementById("senderScreen")
+    .style.display = "none";
+
+  document.getElementById("consentBox")
+    .style.display = "block";
+
+  document.getElementById("status").innerText =
+    "Camera sharing requires your permission.";
+
+  window.receiverHost = host;
+
+}
+
+
+// Receiver allows camera
+async function allowCamera() {
+
+  try {
+
+    localStream =
+      await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+
+    document.getElementById("consentBox")
+      .style.display = "none";
+
+    document.getElementById("receiverCamera")
+      .style.display = "block";
+
+    document.getElementById("localVideo")
+      .srcObject = localStream;
+
+    document.getElementById("status").innerText =
+      "Connecting camera...";
+
+
+    // Call the sender automatically
+    const call =
+      peer.call(
+        window.receiverHost,
+        localStream
+      );
+
+
+    call.on("stream", function(remoteStream) {
+
+      // Normally the sender does not need
+      // to send a camera back.
+      console.log("Connection established.");
+
+    });
+
+
+    call.on("close", function() {
+
+      stopCamera();
+
+    });
+
+
+    call.on("error", function(error) {
+
+      console.error(error);
+
+      document.getElementById("status").innerText =
+        "Could not connect.";
+
+    });
+
+  } catch (error) {
+
+    console.error(error);
+
+    alert(
+      "Camera permission was denied or unavailable."
+    );
+
+  }
+
+}
+
+
+// Receiver cancels
+function cancelCamera() {
+
+  document.getElementById("consentBox")
+    .style.display = "none";
+
+  document.getElementById("status").innerText =
+    "Camera sharing cancelled.";
+
+}
+
+
+// Stop camera
+function stopCamera() {
+
+  if (localStream) {
+
+    localStream.getTracks().forEach(function(track) {
+      track.stop();
+    });
+
+    localStream = null;
+
+  }
+
+}
+
+</script>
+
+</body>
+</html>
